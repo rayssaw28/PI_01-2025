@@ -1,0 +1,299 @@
+<!-- Modal de Erro Global -->
+<app-error-modal *ngIf="errorMessage" [message]="errorMessage" (close)="closeErrorModal()"></app-error-modal>
+
+<!-- TELA DE LOGIN -->
+<div *ngIf="!isLoggedIn" class="login-container">
+  <div class="login-box">
+    <h2 class="login-title">GreenLog Solution</h2>
+    <form (ngSubmit)="onLogin()">
+      <div class="form-group">
+        <label for="username">Usuário</label>
+        <input id="username" type="text" [(ngModel)]="username" name="username" required />
+      </div>
+      <div class="form-group">
+        <label for="password">Senha</label>
+        <input id="password" type="password" [(ngModel)]="password" name="password" required />
+      </div>
+      <button type="submit" class="btn-login">Entrar</button>
+    </form>
+  </div>
+</div>
+
+<!-- APLICAÇÃO PRINCIPAL (APÓS LOGIN) -->
+<div *ngIf="isLoggedIn" class="app-layout">
+  <header class="app-header">
+    <h1>GreenLog Solution</h1>
+    <button (click)="logout()" class="btn-logout">Sair</button>
+  </header>
+
+  <div class="app-body">
+    <nav class="app-nav">
+      <h3>Gerenciar</h3>
+      <ul>
+        <li><button (click)="navigateTo('caminhoes')" [class.active]="currentView === 'caminhoes'">Caminhões</button></li>
+        <li><button (click)="navigateTo('itinerarios')" [class.active]="currentView === 'itinerarios'">Itinerários</button></li>
+        <li><button (click)="navigateTo('rotas')" [class.active]="currentView === 'rotas'">Rotas</button></li>
+        <li><button (click)="navigateTo('areas')" [class.active]="currentView === 'areas'">Áreas</button></li>
+      </ul>
+    </nav>
+
+    <main class="app-content">
+      <!-- Tela de Boas-Vindas -->
+      <div *ngIf="currentView === 'menu'">
+        <h2>Bem-vindo ao Sistema de Gerenciamento GreenLog!</h2>
+        <p>Selecione uma opção no menu à esquerda para começar.</p>
+      </div>
+
+      <!-- SEÇÃO CAMINHÕES -->
+      <div *ngIf="currentView === 'caminhoes'">
+        <h1>Cadastro de Caminhões</h1>
+        <div class="actions-header">
+          <button (click)="abrirModalNovoCaminhao()" class="btn btn-salvar">Novo Caminhão</button>
+        </div>
+        <table>
+          <thead>
+            <tr><th>Placa</th><th>Motorista</th><th>Capacidade (kg)</th><th>Tipos de Resíduos</th><th>Ações</th></tr>
+          </thead>
+          <tbody>
+            <tr *ngFor="let caminhao of caminhoes">
+              <td>{{ caminhao.placa }}</td>
+              <td>{{ caminhao.motorista }}</td>
+              <td>{{ caminhao.capacidade }}</td>
+              <td>{{ formatarTiposResiduos(caminhao.tiposResiduos) }}</td>
+              <td>
+                <button (click)="abrirModalEdicaoCaminhao(caminhao)" class="btn btn-editar">Editar</button>
+                <button (click)="excluirCaminhao(caminhao.id)" class="btn btn-excluir">Excluir</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+        <!-- Modal Caminhão -->
+        <div *ngIf="mostrarModalCaminhao" class="modal-overlay" (click)="fecharModalCaminhao()">
+          <div class="modal-container" (click)="$event.stopPropagation()">
+            <h2>{{ caminhaoParaEdicao ? 'Editar Caminhão' : 'Novo Caminhão' }}</h2>
+            <form (ngSubmit)="salvarCaminhao()">
+              <div class="form-group"><label for="placa">Placa</label><input id="placa" type="text" [(ngModel)]="caminhao.placa" name="placa" required /></div>
+              <div class="form-group"><label for="motorista">Motorista</label><input id="motorista" type="text" [(ngModel)]="caminhao.motorista" name="motorista" required /></div>
+              <div class="form-group"><label for="capacidade">Capacidade (kg)</label><input id="capacidade" type="number" [(ngModel)]="caminhao.capacidade" name="capacidade" required min="1" /></div>
+              <div class="form-group"><label>Tipos de Resíduos</label>
+                <div *ngFor="let tipo of tiposResiduoDisponiveis" class="checkbox-group">
+                  <input type="checkbox" [id]="'tipo-' + tipo" [value]="tipo" [checked]="isTipoResiduoSelected(tipo)" (change)="toggleTipoResiduo(tipo, $event)" /><label [for]="'tipo-' + tipo">{{ tipo }}</label>
+                </div>
+              </div>
+              <div class="modal-actions">
+                <button type="submit" class="btn btn-salvar">Salvar</button>
+                <button type="button" (click)="fecharModalCaminhao()" class="btn btn-cancelar">Cancelar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- SEÇÃO ROTAS (ATUALIZADA COM FILTROS EM CASCATA) -->
+      <div *ngIf="currentView === 'rotas'">
+        <h1>Cálculo e Agendamento de Rotas</h1>
+        <div class="form-container">
+          <h3>Nova Rota Inteligente</h3>
+          <form (ngSubmit)="calcularRotaInteligente()" class="grid-form">
+            
+            <!-- 1. Ponto de Coleta de Origem -->
+            <div class="form-group">
+              <label for="origem">Ponto de Coleta de Origem</label>
+              <select id="origem" [(ngModel)]="rotaParaCalculo.pontoOrigemId" (change)="onOrigemChange()" name="pontoOrigemId" required>
+                <option [ngValue]="null" disabled>Selecione...</option>
+                <option *ngFor="let ponto of pontosDeColetaParaRota" [ngValue]="ponto.id">
+                  {{ ponto.nome }} <ng-container *ngIf="ponto.bairro">({{ ponto.bairro.nome }})</ng-container>
+                </option>
+              </select>
+            </div>
+            
+            <!-- 2. Ponto de Coleta de Destino (Filtrado) -->
+            <div class="form-group">
+              <label for="destino">Ponto de Coleta de Destino</label>
+              <select id="destino" [(ngModel)]="rotaParaCalculo.pontoDestinoId" (change)="onDestinoChange()" name="pontoDestinoId" required [disabled]="!rotaParaCalculo.pontoOrigemId">
+                <option [ngValue]="null" disabled>Selecione...</option>
+                <option *ngFor="let ponto of pontosDestinoFiltrados" [ngValue]="ponto.id">
+                  {{ ponto.nome }} <ng-container *ngIf="ponto.bairro">({{ ponto.bairro.nome }})</ng-container>
+                </option>
+              </select>
+            </div>
+            
+            <!-- 3. Tipo de Resíduo (Filtrado e Reordenado) -->
+            <div class="form-group">
+              <label for="tipoResiduo">Tipo de Resíduo (Prioridade)</label>
+              <select id="tipoResiduo" [(ngModel)]="rotaParaCalculo.tipoResiduo" (change)="onResiduoChange()" name="tipoResiduo" required [disabled]="!rotaParaCalculo.pontoDestinoId">
+                <option [ngValue]="null" disabled>Selecione...</option>
+                <option *ngFor="let tipo of residuosEmComum" [value]="tipo">{{ tipo }}</option>
+              </select>
+            </div>
+
+            <!-- 4. Caminhão (Filtrado) -->
+            <div class="form-group">
+              <label for="caminhao">Caminhão</label>
+              <select id="caminhao" [(ngModel)]="rotaParaCalculo.caminhaoId" name="caminhaoId" required [disabled]="!rotaParaCalculo.tipoResiduo">
+                <option [ngValue]="null" disabled>Selecione...</option>
+                <option *ngFor="let cam of caminhoesFiltrados" [ngValue]="cam.id">{{ cam.placa }} - {{ cam.motorista }}</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="data">Data do Itinerário</label>
+              <input id="data" type="date" [(ngModel)]="rotaParaCalculo.data" name="data" required />
+            </div>
+
+            <div class="grid-form-actions">
+              <button type="submit" class="btn btn-salvar" [disabled]="!rotaParaCalculo.caminhaoId">Calcular e Agendar Rota</button>
+            </div>
+          </form>
+        </div>
+        
+        <h2>Rotas Calculadas</h2>
+        <table>
+          <thead><tr><th>ID</th><th>Caminho (Bairros)</th><th>Distância (km)</th><th>Caminhão</th><th>Resíduo</th></tr></thead>
+          <tbody>
+            <tr *ngFor="let rota of rotas">
+              <td>{{ rota.id }}</td>
+              <td>{{ formatarBairros(rota.bairros) }}</td>
+              <td>{{ rota.distanciaTotal.toFixed(2) }}</td>
+              <td>{{ rota.caminhao.placa }}</td>
+              <td>{{ rota.tipoResiduo }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- SEÇÃO ITINERÁRIOS -->
+      <div *ngIf="currentView === 'itinerarios'">
+        <h1>Consulta de Itinerários</h1>
+        <div class="form-container">
+          <h3>Filtros</h3>
+          <div class="filter-form">
+            <div class="form-group"><label for="filtroCaminhao">Caminhão</label><select id="filtroCaminhao" [(ngModel)]="filtroItinerario.caminhaoId" name="filtroCaminhaoId"><option [ngValue]="0">Todos</option><option *ngFor="let cam of caminhoes" [ngValue]="cam.id">{{ cam.placa }}</option></select></div>
+            <div class="form-group"><label for="filtroMes">Mês</label><input id="filtroMes" type="number" min="1" max="12" [(ngModel)]="filtroItinerario.mes" name="filtroMes" placeholder="Ex: 6"/></div>
+            <div class="form-group"><label for="filtroAno">Ano</label><input id="filtroAno" type="number" min="2020" max="2050" [(ngModel)]="filtroItinerario.ano" name="filtroAno" placeholder="Ex: 2025"/></div>
+            <div class="form-group"><label for="filtroMotorista">Motorista</label><input id="filtroMotorista" type="text" [(ngModel)]="filtroItinerario.motorista" name="filtroMotorista" placeholder="Nome do motorista"/></div>
+            <button (click)="buscarItinerarios()" class="btn btn-salvar">Buscar</button>
+            <button (click)="limparFiltrosItinerario()" class="btn btn-cancelar">Limpar</button>
+          </div>
+        </div>
+        <h2>Resultados</h2>
+        <table>
+          <thead><tr><th>Data</th><th>Caminhão</th><th>Motorista</th><th>Rota (Bairros)</th></tr></thead>
+          <tbody>
+            <tr *ngFor="let it of itinerarios">
+              <td>{{ it.data }}</td>
+              <td>{{ it.caminhao.placa }}</td>
+              <td>{{ it.caminhao.motorista }}</td>
+              <td>{{ formatarBairros(it.rota.bairros) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- SEÇÃO ÁREAS -->
+      <div *ngIf="currentView === 'areas'">
+        <h1>Gerenciamento de Áreas</h1>
+        <div class="sub-nav">
+          <button (click)="navigateToAreaSubView('bairros')" [class.active]="currentAreaSubView === 'bairros'">Bairros</button>
+          <button (click)="navigateToAreaSubView('ruas')" [class.active]="currentAreaSubView === 'ruas'">Ruas</button>
+          <button (click)="navigateToAreaSubView('pontosColeta')" [class.active]="currentAreaSubView === 'pontosColeta'">Pontos de Coleta</button>
+        </div>
+
+        <!-- SUB-SEÇÃO BAIRROS -->
+        <div *ngIf="currentAreaSubView === 'bairros'">
+          <h2>Cadastro de Bairros</h2>
+          <div class="actions-header"><button (click)="abrirModalNovoBairro()" class="btn btn-salvar">Novo Bairro</button></div>
+          <table>
+            <thead><tr><th>ID</th><th>Nome</th><th>Ações</th></tr></thead>
+            <tbody>
+              <tr *ngFor="let bairro of bairros">
+                <td>{{ bairro.id }}</td>
+                <td>{{ bairro.nome }}</td>
+                <td><button (click)="excluirBairro(bairro.id)" class="btn btn-excluir">Excluir</button></td>
+              </tr>
+            </tbody>
+          </table>
+          <!-- Modal Bairro -->
+          <div *ngIf="mostrarModalBairro" class="modal-overlay" (click)="fecharModalBairro()"><div class="modal-container" (click)="$event.stopPropagation()">
+            <h2>Novo Bairro</h2>
+            <form (ngSubmit)="salvarBairro()">
+              <div class="form-group"><label for="bairroNome">Nome do Bairro</label><input id="bairroNome" type="text" [(ngModel)]="bairroParaCadastro.nome" name="bairroNome" required /></div>
+              <div class="modal-actions"><button type="submit" class="btn btn-salvar">Salvar</button><button type="button" (click)="fecharModalBairro()" class="btn btn-cancelar">Cancelar</button></div>
+            </form>
+          </div></div>
+        </div>
+
+        <!-- SUB-SEÇÃO RUAS -->
+        <div *ngIf="currentAreaSubView === 'ruas'">
+          <h2>Cadastro de Ruas</h2>
+          <div class="actions-header"><button (click)="abrirModalNovaRua()" class="btn btn-salvar">Nova Rua</button></div>
+          <table>
+            <thead><tr><th>ID</th><th>Bairro Origem</th><th>Bairro Destino</th><th>Distância (km)</th><th>Ações</th></tr></thead>
+            <tbody>
+              <tr *ngFor="let rua of ruas">
+                <td>{{ rua.id }}</td>
+                <td>{{ rua.bairroOrigem?.nome }}</td>
+                <td>{{ rua.bairroDestino?.nome }}</td>
+                <td>{{ rua.distancia }}</td>
+                <td><button (click)="excluirRua(rua.id)" class="btn btn-excluir">Excluir</button></td>
+              </tr>
+            </tbody>
+          </table>
+          <!-- Modal Rua -->
+          <div *ngIf="mostrarModalRua" class="modal-overlay" (click)="fecharModalRua()"><div class="modal-container" (click)="$event.stopPropagation()">
+            <h2>Nova Rua</h2>
+            <form (ngSubmit)="salvarRua()">
+              <div class="form-group"><label for="ruaBairroOrigem">Bairro de Origem</label><select id="ruaBairroOrigem" [(ngModel)]="ruaParaCadastro.bairroOrigemId" name="ruaBairroOrigem" required><option [ngValue]="null" disabled>Selecione...</option><option *ngFor="let bairro of bairros" [ngValue]="bairro.id">{{ bairro.nome }}</option></select></div>
+              <div class="form-group"><label for="ruaBairroDestino">Bairro de Destino</label><select id="ruaBairroDestino" [(ngModel)]="ruaParaCadastro.bairroDestinoId" name="ruaBairroDestino" required><option [ngValue]="null" disabled>Selecione...</option><option *ngFor="let bairro of bairros" [ngValue]="bairro.id">{{ bairro.nome }}</option></select></div>
+              <div class="form-group"><label for="ruaDistancia">Distância (km)</label><input id="ruaDistancia" type="number" [(ngModel)]="ruaParaCadastro.distancia" name="ruaDistancia" required min="0.1" step="0.1"/></div>
+              <div class="modal-actions"><button type="submit" class="btn btn-salvar">Salvar</button><button type="button" (click)="fecharModalRua()" class="btn btn-cancelar">Cancelar</button></div>
+            </form>
+          </div></div>
+        </div>
+
+        <!-- SUB-SEÇÃO PONTOS DE COLETA (COM BOTÃO DE EDITAR) -->
+        <div *ngIf="currentAreaSubView === 'pontosColeta'">
+          <h2>Cadastro de Pontos de Coleta</h2>
+          <div class="actions-header"><button (click)="abrirModalNovoPontoColeta()" class="btn btn-salvar">Novo Ponto</button></div>
+          <table>
+            <thead><tr><th>ID</th><th>Nome</th><th>Bairro</th><th>Endereço</th><th>Responsável</th><th>Contato</th><th>Resíduos</th><th>Ações</th></tr></thead>
+            <tbody>
+              <tr *ngFor="let ponto of pontosColeta">
+                <td>{{ ponto.id }}</td>
+                <td>{{ ponto.nome }}</td>
+                <td>{{ ponto.bairro?.nome }}</td>
+                <td>{{ ponto.endereco }}</td>
+                <td>{{ ponto.responsavel }}</td>
+                <td>{{ ponto.contato }}</td>
+                <td>{{ formatarTiposResiduos(ponto.tiposResiduos) }}</td>
+                <td>
+                  <button (click)="abrirModalEdicaoPontoColeta(ponto)" class="btn btn-editar">Editar</button>
+                  <button (click)="excluirPontoColeta(ponto.id)" class="btn btn-excluir">Excluir</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <!-- Modal Ponto de Coleta -->
+          <div *ngIf="mostrarModalPontoColeta" class="modal-overlay" (click)="fecharModalPontoColeta()">
+            <div class="modal-container" (click)="$event.stopPropagation()">
+              <h2>{{ pontoColetaParaEdicao ? 'Editar Ponto de Coleta' : 'Novo Ponto de Coleta' }}</h2>
+              <form (ngSubmit)="salvarPontoColeta()">
+                <div class="form-group"><label for="pontoNome">Nome</label><input id="pontoNome" type="text" [(ngModel)]="pontoColetaParaCadastro.nome" name="pontoNome" required /></div>
+                <div class="form-group"><label for="pontoResponsavel">Responsável</label><input id="pontoResponsavel" type="text" [(ngModel)]="pontoColetaParaCadastro.responsavel" name="pontoResponsavel" required/></div>
+                <div class="form-group"><label for="pontoContato">Contato</label><input id="pontoContato" type="text" [(ngModel)]="pontoColetaParaCadastro.contato" name="pontoContato" required/></div>
+                <div class="form-group"><label for="pontoEndereco">Endereço</label><input id="pontoEndereco" type="text" [(ngModel)]="pontoColetaParaCadastro.endereco" name="pontoEndereco" required/></div>
+                <div class="form-group"><label for="pontoBairro">Bairro</label><select id="pontoBairro" [(ngModel)]="pontoColetaParaCadastro.bairroId" name="pontoBairro" required><option [ngValue]="null" disabled>Selecione...</option><option *ngFor="let bairro of bairros" [ngValue]="bairro.id">{{ bairro.nome }}</option></select></div>
+                <div class="form-group"><label>Tipos de Resíduos Aceitos</label>
+                  <div *ngFor="let tipo of tiposResiduoDisponiveis" class="checkbox-group">
+                    <input type="checkbox" [id]="'ponto-tipo-' + tipo" [value]="tipo" [checked]="isPontoTipoResiduoSelected(tipo)" (change)="togglePontoTipoResiduo(tipo, $event)"/><label [for]="'ponto-tipo-' + tipo">{{ tipo }}</label>
+                  </div>
+                </div>
+                <div class="modal-actions"><button type="submit" class="btn btn-salvar">Salvar</button><button type="button" (click)="fecharModalPontoColeta()" class="btn btn-cancelar">Cancelar</button></div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
